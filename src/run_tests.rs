@@ -70,7 +70,8 @@ pub fn handle_test(
             "--color=always"
         } else {
             "--color=never"
-        });
+        })
+        .arg("-g");
 
     match compile_type {
         CompileType::Full => cmd.arg("--crate-type=bin"),
