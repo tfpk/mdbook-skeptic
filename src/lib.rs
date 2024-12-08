@@ -218,7 +218,14 @@ fn run_tests_with_config(tests: Vec<Test>, config: &KeeperConfig) -> HashMap<Tes
         }
         let testcase_path = get_test_path(&test, &config.test_dir);
 
-        let result: TestResult = if !testcase_path.is_file() {
+        let result: TestResult = if true
+        /*debug !testcase_path.is_file()*/
+        {
+            eprintln!(
+                "...writing test {} to path {}",
+                test.name,
+                testcase_path.to_string_lossy()
+            );
             write_test_to_path(&test, &testcase_path).unwrap();
             handle_test(
                 config.manifest_dir.as_deref(),
@@ -330,7 +337,11 @@ fn clean_file(test_results: &HashMap<Test, TestResult>, path: &Path) -> Option<(
     };
 
     if should_remove {
-        std::fs::remove_file(path).expect("Should be able to delete cache-file");
+        eprintln!(
+            "... perversely retaining failing test file {}",
+            path.to_string_lossy()
+        );
+        //todo make this an option std::fs::remove_file(path).expect("Should be able to delete cache-file");
     }
 
     Some(())
