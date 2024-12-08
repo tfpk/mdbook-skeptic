@@ -141,7 +141,7 @@ pub fn handle_test(
         )),
     };
 
-    eprintln!("... compiling via {:?}", &cmd);
+    //todo future verbose option? eprintln!("... compiling via {:?}", &cmd);
     let command_result = cmd.output().unwrap();
     return if !command_result.status.success() {
         TestResult::CompileFailed(command_result)
