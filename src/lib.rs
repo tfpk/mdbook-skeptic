@@ -132,17 +132,23 @@ impl KeeperConfig {
                 build_dir
             });
 
+        let manifest_dir = keeper_config.manifest_dir.map(PathBuf::from);
+        let is_workspace = keeper_config.is_workspace.unwrap_or(false);
+
         let target_dir = keeper_config
             .target_dir
             .map(PathBuf::from)
             .unwrap_or_else(|| {
-                let mut target_dir = test_dir.clone();
-                target_dir.push("target");
-                target_dir
+                if let Some(mf_dir) = manifest_dir.clone() {
+                    let mut target_dir = mf_dir; // target is ./target/debug if in a Cargo project
+                    target_dir.push("target/debug");
+                    target_dir
+                } else {
+                    let mut target_dir = test_dir.clone();
+                    target_dir.push("target"); // target is just ./target if not in a Cargo project -- ugh!
+                    target_dir
+                }
             });
-
-        let manifest_dir = keeper_config.manifest_dir.map(PathBuf::from);
-        let is_workspace = keeper_config.is_workspace.unwrap_or(false);
 
         let terminal_colors = keeper_config
             .terminal_colors
@@ -150,7 +156,7 @@ impl KeeperConfig {
 
         set_override(terminal_colors);
 
-        KeeperConfig {
+        let config = KeeperConfig {
             test_dir,
             target_dir,
             manifest_dir,
@@ -158,7 +164,10 @@ impl KeeperConfig {
             build_features: keeper_config.build_features,
             terminal_colors,
             externs: keeper_config.externs,
-        }
+        };
+        //todo future verbose option? eprintln!("... config: {:?}", &config);
+
+        config
     }
 
     fn setup_environment(&self) {
@@ -205,8 +214,7 @@ fn get_test_path(test: &Test, test_dir: &Path) -> PathBuf {
 fn write_test_to_path(test: &Test, path: &Path) -> Result<(), std::io::Error> {
     let mut output = File::create(path)?;
     let test_text = create_test_input(&test.text);
-    write!(output, "{}", test_text)?;
-
+    write!(output, "// test name {}\n{}", test.name, test_text)?;
     Ok(())
 }
 
@@ -329,6 +337,7 @@ fn clean_file(test_results: &HashMap<Test, TestResult>, path: &Path) -> Option<(
         None => true,
     };
 
+    //todo future option to retain failing source files (maybe move to the side?)
     if should_remove {
         std::fs::remove_file(path).expect("Should be able to delete cache-file");
     }
@@ -396,4 +405,22 @@ impl Preprocessor for BookKeeper {
     fn supports_renderer(&self, renderer: &str) -> bool {
         renderer != "not-supported"
     }
+}
+
+#[allow(unused)]
+// invoke VSCode debugger
+// Works for CodeLLDB running in VS Code.  YMMV
+fn attach_debugger() {
+    let url = format!(
+        "vscode://vadimcn.vscode-lldb/launch/config?{{'request':'attach','pid':{}}}",
+        std::process::id()
+    );
+
+    let output = std::process::Command::new("code")
+        .arg("--open-url")
+        .arg(url)
+        .output()
+        .unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(1000)); // Wait for debugger to attach
+    eprintln!("... Debugger attached: status: {:?}", output.status);
 }

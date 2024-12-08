@@ -90,7 +90,7 @@ pub fn handle_test(
         cargo_toml_path.push("Cargo.toml");
 
         let mut deps_dir = PathBuf::from(target_dir);
-        deps_dir.push("debug/deps");
+        deps_dir.push("deps");
 
         // Find the edition
 
@@ -141,6 +141,7 @@ pub fn handle_test(
         )),
     };
 
+    //todo future verbose option? eprintln!("... compiling via {:?}", &cmd);
     let command_result = cmd.output().unwrap();
     return if !command_result.status.success() {
         TestResult::CompileFailed(command_result)
@@ -243,12 +244,61 @@ impl LockedDeps {
 impl Iterator for LockedDeps {
     type Item = (String, String);
 
+    // hack alert -- handle workspace version inheritance
+    // (I think that's what it is...)
+    // if you declare the *version* of a crate in the workspace Cargo.toml
+    // ```
+    // (<crateRoot>/Cargo.toml)
+    // [workspace]
+    // [workspace.package]
+    // version = <version>
+    // ```
+    // and then declare a package in that workspace that inherits version
+    // from the workspace, like
+    // with syntax in package  like:
+    // ```
+    // (<workspaceRoot>/<package>/Cargo.toml)
+    // [package]
+    // name = <package>
+    // version = {workspace = true}
+    // ```
+    // then the metadata for the package id is "malformed" in the metadata.
+    // It looks like:
+    // ```
+    // "name": "leptos",
+    // "version": "0.7.0",
+    // "id": "path+file:///home/bobhy/src/localdep/leptos/leptos#0.7.0",
+    // ```
+    // rather than the expected:
+    // ```
+    // "name": "leptos_router",
+    // "version": "0.7.0",
+    // "id": "path+file:///home/bobhy/src/localdep/leptos/router#leptos_router@0.7.0",
+    // ```
+    // I found I had to resort to extraordinary hacks to
+    // determine the actual package name.  For this case,
+    // I assume the package is the tail of the source path.
+    // Wiser heads in Cargo land may be able to explain this.
+    //
     fn next(&mut self) -> Option<(String, String)> {
         let dep = self.dependencies.pop()?;
-        let mut parts = dep.split_whitespace();
-        let name = parts.next()?;
-        let val = parts.next()?;
-        Some((name.replace('-', "_"), val.to_owned()))
+        if let Some((rest, version)) = dep.rsplit_once('@') {
+            if let Some((_source, libname)) = rest.rsplit_once('#') {
+                Some((libname.replace('-', "_"), version.to_owned()))
+            } else {
+                Some(("unknown_lib".to_owned(), version.to_owned()))
+            }
+        } else {
+            if let Some((source, version)) = dep.rsplit_once('#') {
+                if let Some((_base, libname)) = source.rsplit_once('/') {
+                    Some((libname.replace('-', "_"), version.to_owned()))
+                } else {
+                    Some(("unknown_lib".to_owned(), version.to_owned()))
+                }
+            } else {
+                Some(("unknown_lib".into(), "unknown_ver".into()))
+            }
+        }
     }
 }
 
@@ -337,4 +387,36 @@ fn edition_str(edition: &Edition) -> Option<&'static str> {
         Edition::E2021 => "2021",
         _ => return None,
     })
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    #[test]
+
+    fn verify_locked_deps_iterator() {
+        let test_exp = [
+            (
+                "path+file:///home/bobhy/src/localdep/leptos/leptos#0.7.0",
+                ("leptos", "0.7.0"),
+            ),
+            (
+                "path+file:///home/bobhy/src/localdep/leptos/router#leptos_router@0.7.0",
+                ("leptos_router", "0.7.0"),
+            ),
+        ];
+        // note that LockedDeps::IntoIterator yields elements in reverse order,
+        // that needs to be accounted for in this test.
+        let ld = LockedDeps {
+            dependencies: test_exp
+                .iter()
+                .map(|(inp, _)| inp.to_string())
+                .rev()
+                .collect(),
+        };
+
+        let iterated: Vec<_> = ld.collect();
+        let exp = test_exp.map(|(_, (l, v))| (l.to_string(), v.to_string()));
+        assert_eq!(iterated, exp, "actual vs expected");
+    }
 }
