@@ -205,8 +205,7 @@ fn get_test_path(test: &Test, test_dir: &Path) -> PathBuf {
 fn write_test_to_path(test: &Test, path: &Path) -> Result<(), std::io::Error> {
     let mut output = File::create(path)?;
     let test_text = create_test_input(&test.text);
-    write!(output, "{}", test_text)?;
-
+    write!(output, "// test name {}\n{}", test.name, test_text)?;
     Ok(())
 }
 
@@ -218,14 +217,7 @@ fn run_tests_with_config(tests: Vec<Test>, config: &KeeperConfig) -> HashMap<Tes
         }
         let testcase_path = get_test_path(&test, &config.test_dir);
 
-        let result: TestResult = if true
-        /*debug !testcase_path.is_file()*/
-        {
-            eprintln!(
-                "...writing test {} to path {}",
-                test.name,
-                testcase_path.to_string_lossy()
-            );
+        let result: TestResult = if !testcase_path.is_file() {
             write_test_to_path(&test, &testcase_path).unwrap();
             handle_test(
                 config.manifest_dir.as_deref(),
@@ -336,12 +328,9 @@ fn clean_file(test_results: &HashMap<Test, TestResult>, path: &Path) -> Option<(
         None => true,
     };
 
+    //todo option to retain failing source files (maybe move to the side?)
     if should_remove {
-        eprintln!(
-            "... perversely retaining failing test file {}",
-            path.to_string_lossy()
-        );
-        //todo make this an option std::fs::remove_file(path).expect("Should be able to delete cache-file");
+        std::fs::remove_file(path).expect("Should be able to delete cache-file");
     }
 
     Some(())
@@ -375,6 +364,22 @@ impl BookKeeper {
         root: PathBuf,
         book: &mut Book,
     ) -> Result<HashMap<Test, TestResult>, Error> {
+        // invoke VSCode debugger
+        {
+            let url = format!(
+                "vscode://vadimcn.vscode-lldb/launch/config?{{'request':'attach','pid':{}}}",
+                std::process::id()
+            );
+
+            let output = std::process::Command::new("code")
+                .arg("--open-url")
+                .arg(url)
+                .output()
+                .unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(1000)); // Wait for debugger to attach
+            eprintln!("... Debugger attached: status: {:?}", output.status);
+        }
+
         let config = KeeperConfig::new(preprocessor_config, &root);
 
         config.setup_environment();

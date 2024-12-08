@@ -166,10 +166,7 @@ pub fn handle_test(
 
 // Retrieve the exact dependencies for a given build by
 // cross-referencing the lockfile with the fingerprint file
-fn get_rlib_dependencies(
-    manifest_dir: PathBuf,
-    target_dir: PathBuf,
-) -> Result<Vec<Fingerprint>> {
+fn get_rlib_dependencies(manifest_dir: PathBuf, target_dir: PathBuf) -> Result<Vec<Fingerprint>> {
     let lock = LockedDeps::from_path(manifest_dir)?;
 
     let fingerprint_dir = target_dir.join(".fingerprint/");
